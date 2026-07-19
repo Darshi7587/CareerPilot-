@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+pydantic
+pydantic-settings
+langchain
+langchain-community
+langchain-core
+langgraph
+chromadb
+sentence-transformers
+duckduckgo-search
+pypdf
+streamlit
+langchain-google-genai
+langchain-groq

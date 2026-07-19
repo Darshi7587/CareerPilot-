@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.venv/
+venv/
+
+# Environment
+.env
+.env.local
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local app data
+careerpilot/backend/database/*.sqlite3
+careerpilot/backend/database/*.db
+careerpilot/backend/database/chroma/
+careerpilot/backend/memory/*.sqlite3
+
+# Streamlit
+.streamlit/
+
+# Frontend build output
+node_modules/
+dist/
+coverage/
+
+# OS
+Thumbs.db
+.DS_Store
