@@ -186,10 +186,4 @@ Navigate to `http://localhost:8501` — you should see the CareerPilot dashboard
 python -m pytest tests/ -v
 ```
 
-## 📄 License
 
-MIT License
-
----
-
-Built with ❤️ for placement preparation.
