@@ -27,6 +27,8 @@ from careerpilot.backend.rag.service import (
     get_rag_service,
 )
 
+from careerpilot.backend.database.auth import get_auth_db
+
 settings = get_settings()
 app = FastAPI(title=settings.app_name)
 app.add_middleware(
@@ -38,6 +40,75 @@ app.add_middleware(
 planner_graph = build_planner_graph()
 checkpoint_store = SQLiteCheckpointStore(settings.checkpoint_path)
 logger = logging.getLogger(__name__)
+
+
+class SignupRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=50)
+    email: str = Field(min_length=3, max_length=100)
+    password: str = Field(min_length=4)
+    full_name: str = Field(default="")
+
+
+class LoginRequest(BaseModel):
+    username_or_email: str = Field(min_length=3)
+    password: str = Field(min_length=4)
+
+
+class UserResponse(BaseModel):
+    user_id: int
+    username: str
+    email: str
+    full_name: str
+    created_at: str
+    session_id: str
+
+
+@app.post("/auth/signup", response_model=UserResponse)
+def auth_signup(request: SignupRequest) -> UserResponse:
+    """Register a new user account."""
+
+    auth_db = get_auth_db()
+    try:
+        user = auth_db.signup(
+            username=request.username,
+            email=request.email,
+            password=request.password,
+            full_name=request.full_name,
+        )
+        session_id = f"user_{user.user_id}_{user.username}"
+        return UserResponse(
+            user_id=user.user_id,
+            username=user.username,
+            email=user.email,
+            full_name=user.full_name,
+            created_at=user.created_at,
+            session_id=session_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/auth/login", response_model=UserResponse)
+def auth_login(request: LoginRequest) -> UserResponse:
+    """Authenticate an existing user."""
+
+    auth_db = get_auth_db()
+    try:
+        user = auth_db.login(
+            username_or_email=request.username_or_email,
+            password=request.password,
+        )
+        session_id = f"user_{user.user_id}_{user.username}"
+        return UserResponse(
+            user_id=user.user_id,
+            username=user.username,
+            email=user.email,
+            full_name=user.full_name,
+            created_at=user.created_at,
+            session_id=session_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
 class ChatRequest(BaseModel):

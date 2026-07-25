@@ -29,6 +29,48 @@ def api_url(path: str) -> str:
     return f"{backend_url()}{path}"
 
 
+def api_signup(username: str, email: str, password: str, full_name: str = "") -> dict | None:
+    try:
+        response = get_http_client().post(
+            api_url("/auth/signup"),
+            json={"username": username, "email": email, "password": password, "full_name": full_name},
+            timeout=15.0,
+        )
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPStatusError as exc:
+        detail = ""
+        try:
+            detail = exc.response.json().get("detail", "")
+        except Exception:
+            detail = exc.response.text[:200]
+        st.error(f"Registration failed: {detail}")
+    except Exception as exc:
+        st.error(f"Sign up error: {exc}")
+    return None
+
+
+def api_login(username_or_email: str, password: str) -> dict | None:
+    try:
+        response = get_http_client().post(
+            api_url("/auth/login"),
+            json={"username_or_email": username_or_email, "password": password},
+            timeout=15.0,
+        )
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPStatusError as exc:
+        detail = ""
+        try:
+            detail = exc.response.json().get("detail", "")
+        except Exception:
+            detail = exc.response.text[:200]
+        st.error(f"Login failed: {detail}")
+    except Exception as exc:
+        st.error(f"Login error: {exc}")
+    return None
+
+
 def api_get(path: str, params: dict | None = None, *, silent: bool = False) -> dict | list | None:
     try:
         response = get_http_client().get(api_url(path), params=params or {}, timeout=30.0)

@@ -28,7 +28,9 @@ from careerpilot.frontend.api_client import (
     DEFAULT_BACKEND,
     api_delete,
     api_get,
+    api_login,
     api_reindex,
+    api_signup,
     api_upload,
     check_health,
     send_chat,
@@ -68,6 +70,8 @@ def init_state() -> None:
     defaults: dict[str, Any] = {
         "backend_url": DEFAULT_BACKEND,
         "session_id": f"cp-{uuid.uuid4().hex[:8]}",
+        "logged_in": False,
+        "user_info": None,
         "messages": [],
         "interview_messages": [],
         "page": "Dashboard",
@@ -85,6 +89,64 @@ def init_state() -> None:
 
 
 init_state()
+
+
+def render_auth_page() -> None:
+    """Render the Signup and Login landing view."""
+
+    st.markdown(
+        """
+        <div style="max-width: 520px; margin: 3rem auto 2rem auto; text-align: center;">
+            <span style="font-size: 3.8rem;">🚀</span>
+            <h1 style="color: #f8fafc; font-size: 2.2rem; font-weight: 700; margin-top: 0.5rem;">Welcome to CareerPilot AI</h1>
+            <p style="color: #94a3b8; font-size: 1rem;">Sign in or register an account to save your resume ATS analysis, RAG documents, and placement progress.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        tab_login, tab_signup = st.tabs(["🔑 Sign In", "📝 Create Account"])
+
+        with tab_login:
+            st.markdown("#### Sign In")
+            login_user = st.text_input("Username or Email", key="login_username")
+            login_pass = st.text_input("Password", type="password", key="login_password")
+            if st.button("Sign In to CareerPilot", type="primary", use_container_width=True):
+                if not login_user or not login_pass:
+                    st.error("Please enter both username/email and password.")
+                else:
+                    res = api_login(login_user, login_pass)
+                    if res:
+                        st.session_state.logged_in = True
+                        st.session_state.user_info = res
+                        st.session_state.session_id = res["session_id"]
+                        st.session_state.messages = []
+                        st.session_state.interview_messages = []
+                        st.toast(f"Welcome back, {res['full_name']}!", icon="👋")
+                        st.rerun()
+
+        with tab_signup:
+            st.markdown("#### Register Account")
+            reg_name = st.text_input("Full Name", key="reg_fullname")
+            reg_user = st.text_input("Username", key="reg_username")
+            reg_email = st.text_input("Email Address", key="reg_email")
+            reg_pass = st.text_input("Password", type="password", key="reg_password")
+            if st.button("Create Account", type="primary", use_container_width=True):
+                if not reg_user or not reg_email or not reg_pass:
+                    st.error("Please fill in all required fields.")
+                else:
+                    res = api_signup(username=reg_user, email=reg_email, password=reg_pass, full_name=reg_name)
+                    if res:
+                        st.session_state.logged_in = True
+                        st.session_state.user_info = res
+                        st.session_state.session_id = res["session_id"]
+                        st.session_state.messages = []
+                        st.session_state.interview_messages = []
+                        st.success("Account registered successfully!")
+                        st.toast(f"Welcome to CareerPilot, {res['full_name']}!", icon="🚀")
+                        st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -682,8 +744,34 @@ def page_chat() -> None:
 # Sidebar & router
 # ---------------------------------------------------------------------------
 
+if not st.session_state.get("logged_in"):
+    render_auth_page()
+    st.stop()
+
 with st.sidebar:
     st.markdown('<div class="nav-brand"><span style="font-size:2.2rem">🚀</span><h2>CareerPilot AI</h2></div>', unsafe_allow_html=True)
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+
+    user = st.session_state.get("user_info") or {}
+    user_name = user.get("full_name") or user.get("username") or "Candidate"
+    user_email = user.get("email") or ""
+    st.markdown(
+        f"""
+        <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.1); padding: 0.8rem; border-radius: 12px; margin-bottom: 1rem;">
+            <div style="font-weight: 600; color: #f8fafc; font-size: 0.95rem;">👤 {user_name}</div>
+            <div style="font-size: 0.8rem; color: #94a3b8;">{user_email}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button("🚪 Logout", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.user_info = None
+        st.session_state.session_id = f"cp-{uuid.uuid4().hex[:8]}"
+        st.session_state.messages = []
+        st.session_state.interview_messages = []
+        st.rerun()
+
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
     health = check_health(st.session_state.backend_url)
@@ -702,7 +790,7 @@ with st.sidebar:
     if st.button("💬 Open Chat", use_container_width=True):
         st.session_state.page = "Chat"
         st.rerun()
-    st.caption(f"Session `{st.session_state.session_id}`")
+    st.caption(f"User Session `{st.session_state.session_id}`")
 
 PAGE_HANDLERS = {
     "Dashboard": page_dashboard,
