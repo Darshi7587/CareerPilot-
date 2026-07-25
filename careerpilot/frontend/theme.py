@@ -39,9 +39,14 @@ html, body, [class*="st-"] {
 }
 
 .block-container {
-    padding-top: 1rem !important;
+    padding-top: 3.5rem !important;
     padding-bottom: 2rem !important;
     max-width: 1440px !important;
+}
+
+header[data-testid="stHeader"] {
+    background: transparent !important;
+    z-index: 99 !important;
 }
 
 section[data-testid="stSidebar"] {
@@ -185,8 +190,20 @@ div[data-testid="stMetric"] {
 .feature-title { font-size: 1.02rem; font-weight: 600; margin-bottom: 0.3rem; }
 .feature-desc { font-size: 0.86rem; color: var(--text-secondary); line-height: 1.55; }
 
-.section-header { font-size: 1.45rem; font-weight: 700; margin-bottom: 0.25rem; }
-.section-sub { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem; }
+.section-header {
+    font-size: 1.65rem !important;
+    font-weight: 700 !important;
+    color: #f8fafc !important;
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.35rem !important;
+    display: block !important;
+}
+.section-sub {
+    font-size: 0.95rem !important;
+    color: rgba(203, 213, 225, 0.88) !important;
+    margin-bottom: 1.2rem !important;
+    display: block !important;
+}
 
 .badge {
     display: inline-block;

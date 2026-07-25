@@ -89,6 +89,13 @@ class DocumentRegistry:
             ).fetchall()
         return [DocumentRecord(**dict(row)) for row in rows]
 
+    def list_all(self) -> list[DocumentRecord]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM documents ORDER BY created_at DESC"
+            ).fetchall()
+        return [DocumentRecord(**dict(row)) for row in rows]
+
     def delete(self, document_id: str, session_id: str) -> DocumentRecord | None:
         record = self.get(document_id, session_id)
         if record is None:

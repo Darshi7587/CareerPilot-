@@ -1,7 +1,9 @@
-from __future__ import annotations
+from pathlib import Path
+from typing import Any
 
 from careerpilot.backend.agents.common import AgentState, run_specialist
 from careerpilot.backend.llm import LLMConfigurationError, generate_response
+from careerpilot.backend.rag.loader import load_pdf
 from careerpilot.backend.rag.service import get_rag_service
 
 _RESUME_PROMPT = """You are CareerPilot's expert resume analyst and ATS (Applicant Tracking System) specialist.
@@ -65,10 +67,30 @@ def handle_resume(state: AgentState) -> AgentState:
     history = state.get("history", [])
 
     service = get_rag_service()
-    indexed = [record for record in service.registry.list(session_id) if record.status == "indexed"]
-    prompt = _RESUME_PROMPT
+    records = service.registry.list(session_id)
+    if not records and hasattr(service.registry, "list_all"):
+        records = service.registry.list_all()
 
-    if indexed:
+    resume_blocks: list[str] = []
+    for record in records:
+        storage_path = getattr(record, "storage_path", "")
+        filename = getattr(record, "filename", "uploaded_resume.pdf")
+        path = Path(storage_path) if storage_path else None
+        if path and path.is_file():
+            try:
+                if path.suffix.lower() == ".pdf":
+                    pages = load_pdf(path)
+                    text = "\n".join(str(p.get("page_content", "")).strip() for p in pages if p.get("page_content"))
+                    if text.strip():
+                        resume_blocks.append(f"=== UPLOADED RESUME FILE: {filename} ===\n{text}")
+                elif path.suffix.lower() in (".txt", ".md"):
+                    text = path.read_text(encoding="utf-8").strip()
+                    if text:
+                        resume_blocks.append(f"=== UPLOADED RESUME FILE: {filename} ===\n{text}")
+            except Exception:
+                pass
+
+    if not resume_blocks and records:
         try:
             matches = service.retrieve(session_id, query or "resume skills experience projects education")
             if matches:
@@ -76,11 +98,22 @@ def handle_resume(state: AgentState) -> AgentState:
                     f"[{item['metadata']['filename']} p.{item['metadata']['page']}]\n{item['content']}"
                     for item in matches
                 )
-                prompt = f"{_RESUME_PROMPT}\n\nUploaded resume content:\n{context}"
+                resume_blocks.append(context)
         except Exception:
             pass
 
+    prompt = _RESUME_PROMPT
+    if resume_blocks:
+        full_resume_text = "\n\n".join(resume_blocks)
+        prompt = (
+            f"{_RESUME_PROMPT}\n\n"
+            f"## FULL UPLOADED RESUME CONTENT TO ANALYZE IN DETAIL:\n"
+            f"{full_resume_text}\n\n"
+            f"INSTRUCTION: Perform a thorough, complete, and specific ATS analysis on the above uploaded resume text. "
+            f"Reference the candidate's exact name, contact info, skills, projects, and education directly from the text."
+        )
+
     response = _generate_resume_response(prompt, query, history)
     metadata = dict(state.get("metadata") or {})
-    metadata["resume_documents"] = len(indexed)
+    metadata["resume_documents"] = len(resume_blocks)
     return {"response": response, "metadata": metadata}

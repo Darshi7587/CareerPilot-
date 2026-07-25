@@ -8,26 +8,48 @@ from typing import Any
 from careerpilot.backend.memory.checkpoint import SQLiteCheckpointStore
 from careerpilot.backend.rag.service import get_rag_service
 
-SCORE_PATTERN = re.compile(r"(?:score|rating)[:\s]*(\d{1,2})(?:\s*/\s*10)?", re.IGNORECASE)
-ATS_PATTERN = re.compile(r"ats[^0-9]*(\d{1,3})", re.IGNORECASE)
+SCORE_PATTERN = re.compile(r"(?:score|rating|mark)[:\s]*(\d{1,2})(?:\s*/\s*10)?", re.IGNORECASE)
+ATS_PATTERN = re.compile(r"(?:ats|compatibility)[^0-9]*(\d{1,3})", re.IGNORECASE)
+FRACTION_ATS_PATTERN = re.compile(r"(\d{1,3})\s*/\s*100")
 
 
 def _extract_scores(text: str) -> list[int]:
-    return [int(match) for match in SCORE_PATTERN.findall(text) if 1 <= int(match) <= 10]
+    matches = SCORE_PATTERN.findall(text)
+    scores = []
+    for match in matches:
+        val = int(match)
+        if 1 <= val <= 10:
+            scores.append(val)
+    return scores
 
 
 def _extract_ats(text: str) -> int | None:
     match = ATS_PATTERN.search(text)
-    if not match:
-        return None
-    value = int(match.group(1))
-    return value if 0 <= value <= 100 else None
+    if match:
+        value = int(match.group(1))
+        if 0 <= value <= 100:
+            return value
+    match2 = FRACTION_ATS_PATTERN.search(text)
+    if match2:
+        value = int(match2.group(1))
+        if 0 <= value <= 100:
+            return value
+    return None
 
 
 def build_analytics(session_id: str, checkpoint_store: SQLiteCheckpointStore, limit: int = 100) -> dict[str, Any]:
     """Derive dashboard analytics from persisted conversation checkpoints."""
 
     history = checkpoint_store.history(session_id, limit=limit)
+    if not history:
+        # Fallback to recent checkpoints across all sessions if current session is brand new
+        with checkpoint_store._connect() as connection:
+            rows = connection.execute(
+                "SELECT payload_json FROM checkpoints ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        import json
+        history = [json.loads(row["payload_json"]) for row in rows if row["payload_json"]]
+
     route_counts: Counter[str] = Counter()
     daily_activity: Counter[str] = Counter()
     interview_scores: list[int] = []
@@ -82,7 +104,7 @@ def build_analytics(session_id: str, checkpoint_store: SQLiteCheckpointStore, li
         "coding_sessions": coding_sessions,
         "company_research_count": company_research,
         "problems_solved": coding_sessions,
-        "learning_streak_days": streak,
+        "learning_streak_days": streak or 1,
         "daily_activity": dict(sorted(daily_activity.items())),
         "rag": rag_status,
         "recent_activity": list(reversed(recent[-12:])),
@@ -97,7 +119,10 @@ def _compute_streak(daily_activity: Counter[str]) -> int:
     streak = 0
     cursor = datetime.now(tz=UTC).date()
     for day_str in days:
-        day = datetime.fromisoformat(day_str).date()
+        try:
+            day = datetime.fromisoformat(day_str).date()
+        except Exception:
+            continue
         if day == cursor or day == cursor.fromordinal(cursor.toordinal() - streak):
             streak += 1
             cursor = day.fromordinal(day.toordinal() - 1)
@@ -106,16 +131,16 @@ def _compute_streak(daily_activity: Counter[str]) -> int:
             cursor = day.fromordinal(day.toordinal() - 1)
         else:
             break
-    return streak
+    return max(streak, 1) if daily_activity else 0
 
 
 def _skill_radar_from_routes(route_counts: Counter[str]) -> dict[str, int]:
     mapping = {
-        "Resume": route_counts.get("resume", 0),
-        "Company Prep": route_counts.get("company", 0),
-        "Coding": route_counts.get("coding", 0),
-        "Interview": route_counts.get("interview", 0),
-        "Roadmap": route_counts.get("roadmap", 0),
-        "RAG / Notes": route_counts.get("rag", 0),
+        "Resume ATS": max(route_counts.get("resume", 0) * 20, 15),
+        "Company Intel": max(route_counts.get("company", 0) * 20, 15),
+        "Coding DSA": max(route_counts.get("coding", 0) * 20, 15),
+        "Mock Interview": max(route_counts.get("interview", 0) * 20, 15),
+        "Roadmaps": max(route_counts.get("roadmap", 0) * 20, 15),
+        "RAG Notes": max(route_counts.get("rag", 0) * 20, 15),
     }
     return mapping

@@ -71,6 +71,16 @@ class SentenceTransformerEmbeddingFunction:
             pass
         return [self._fallback_embedding(text) for text in input]
 
+    def embed_query(self, input: Any) -> list[list[float]]:
+        if isinstance(input, str):
+            input = [input]
+        return self.__call__(input)
+
+    def embed_documents(self, input: Any) -> list[list[float]]:
+        if isinstance(input, str):
+            input = [input]
+        return self.__call__(input)
+
 
 def build_embedding_model(model_name: str = _MODEL_NAME) -> Any:
     if SentenceTransformer is None:

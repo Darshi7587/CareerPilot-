@@ -221,30 +221,92 @@ class RAGService:
         }
 
     def retrieve(self, session_id: str, query: str) -> list[dict[str, Any]]:
-        """Retrieve only chunks belonging to the requesting session."""
+        """Retrieve chunks belonging to the requesting session or fallback to all indexed documents."""
 
-        if not any(record.status == "indexed" for record in self.registry.list(session_id)):
+        records = [record for record in self.registry.list(session_id) if record.status == "indexed"]
+        where_clause: dict[str, Any] | None = {"session_id": session_id}
+        if not records and hasattr(self.registry, "list_all"):
+            records = [record for record in self.registry.list_all() if record.status == "indexed"]
+            where_clause = None
+
+        if not records:
             return []
-        result = self.collection.query(
-            query_texts=[query],
-            n_results=self.settings.rag_top_k,
-            where={"session_id": session_id},
-            include=["documents", "metadatas", "distances"],
-        )
-        documents = result.get("documents", [[]])[0] or []
-        metadatas = result.get("metadatas", [[]])[0] or []
-        distances = result.get("distances", [[]])[0] or []
-        return [
-            {"content": text, "metadata": metadata, "distance": distance}
-            for text, metadata, distance in zip(documents, metadatas, distances)
-        ]
+
+        try:
+            query_kwargs: dict[str, Any] = {
+                "query_texts": [query],
+                "n_results": min(self.settings.rag_top_k, max(len(records) * 5, 4)),
+                "include": ["documents", "metadatas", "distances"],
+            }
+            if where_clause:
+                query_kwargs["where"] = where_clause
+
+            result = self.collection.query(**query_kwargs)
+            documents = result.get("documents", [[]])[0] or []
+            metadatas = result.get("metadatas", [[]])[0] or []
+            distances = result.get("distances", [[]])[0] or []
+            return [
+                {"content": text, "metadata": metadata, "distance": distance}
+                for text, metadata, distance in zip(documents, metadatas, distances)
+            ]
+        except Exception:
+            fallback = []
+            for record in records:
+                path = Path(record.storage_path)
+                if path.is_file():
+                    try:
+                        text = path.read_text(encoding="utf-8", errors="ignore")[:1200]
+                        fallback.append({
+                            "content": text,
+                            "metadata": {"filename": record.filename, "page": 1},
+                            "distance": 0.5,
+                        })
+                    except Exception:
+                        pass
+            return fallback
 
     def answer(self, session_id: str, query: str, history: list[dict[str, Any]]) -> str:
-        """Generate an answer grounded exclusively in retrieved chunks and cite every source."""
+        """Generate an answer grounded in retrieved chunks or uploaded document context."""
 
-        matches = self.retrieve(session_id, query)
+        try:
+            matches = self.retrieve(session_id, query)
+        except Exception:
+            matches = []
+
         if not matches:
+            records = [record for record in self.registry.list(session_id) if record.status == "indexed"]
+            if not records and hasattr(self.registry, "list_all"):
+                records = [record for record in self.registry.list_all() if record.status == "indexed"]
+            if records:
+                fallback_blocks = []
+                for rec in records:
+                    p = Path(rec.storage_path)
+                    if p.is_file():
+                        try:
+                            if p.suffix.lower() == ".pdf":
+                                pages = load_pdf(p)
+                                t = "\n".join(str(pg.get("page_content", "")).strip() for pg in pages if pg.get("page_content"))
+                                if t:
+                                    fallback_blocks.append(f"[{rec.filename}]\n{t}")
+                            else:
+                                t = p.read_text(encoding="utf-8", errors="ignore")
+                                if t:
+                                    fallback_blocks.append(f"[{rec.filename}]\n{t}")
+                        except Exception:
+                            pass
+                if fallback_blocks:
+                    context = "\n\n".join(fallback_blocks)
+                    prompt = (
+                        "You are CareerPilot's document-grounded assistant. Answer the user's question based on the document text provided below.\n\n"
+                        f"DOCUMENT CONTENT:\n{context}"
+                    )
+                    try:
+                        return generate_response(prompt, query, history)
+                    except Exception as exc:
+                        return f"Found indexed document text, but AI model error occurred: {exc}"
+
             return "I could not find indexed documents for this session that answer that question. Upload PDFs or ask about their content after indexing finishes."
+
         context = "\n\n".join(
             f"Source: {item['metadata']['filename']} page {item['metadata']['page']}\n{item['content']}"
             for item in matches
@@ -258,6 +320,9 @@ class RAGService:
             response = generate_response(prompt, query, history)
         except LLMConfigurationError as exc:
             return f"The documents were retrieved, but the selected LLM provider is not configured: {exc}"
+        except Exception as exc:
+            return f"Retrieved relevant documents, but AI generation error occurred: {exc}"
+
         citations = "\n".join(
             f"- [{item['metadata']['filename']}, p. {item['metadata']['page']}]"
             for item in matches
