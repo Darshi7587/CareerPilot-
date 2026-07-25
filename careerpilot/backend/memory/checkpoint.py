@@ -69,3 +69,20 @@ class SQLiteCheckpointStore:
         if row is None:
             return None
         return json.loads(row["payload_json"])
+
+    def history(self, session_id: str, limit: int = 10) -> list[dict[str, Any]]:
+        """Load recent checkpoints in ascending order for the session."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT payload_json
+                FROM checkpoints
+                WHERE session_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (session_id, limit),
+            ).fetchall()
+        history = [json.loads(row["payload_json"]) for row in rows]
+        return list(reversed(history))

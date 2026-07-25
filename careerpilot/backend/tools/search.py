@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from duckduckgo_search import DDGS
+try:
+    from ddgs import DDGS
+except ImportError:  # pragma: no cover - compatibility while upgrading existing environments
+    from duckduckgo_search import DDGS
 
 
 def duckduckgo_search(query: str, max_results: int = 5) -> list[dict[str, Any]]:

@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from careerpilot.backend.rag.service import RAGService, get_rag_service
 
 
-def build_retriever() -> dict[str, Any]:
-    """Placeholder retriever configuration for the first RAG iteration."""
+def build_retriever() -> RAGService:
+    """Return the persistent Chroma-backed retriever service."""
 
-    return {
-        "status": "placeholder",
-        "message": "ChromaDB retriever wiring will be implemented in the RAG module.",
-    }
+    return get_rag_service()
