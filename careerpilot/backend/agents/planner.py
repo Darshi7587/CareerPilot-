@@ -167,17 +167,42 @@ def _plan_route(state: PlannerState, classifier: RouteClassifier | None) -> tupl
         return rule_route, {"classification_source": "keyword_fallback", "llm_error": "Planner provider unavailable."}
 
 
+_GREETINGS_PATTERN = re.compile(r"^(h+[i1]+|h+[e3]+l+o+|h+[e3]+y+|yo+|namaste|good\s*(morning|afternoon|evening)|greetings|help)[\s!.]*$", re.IGNORECASE)
+
+
 def _fallback_handler(state: PlannerState) -> PlannerState:
-    """Provide a helpful fallback response when the query is too vague for a specialist."""
+    """Provide a warm, conversational AI response for general queries or greetings."""
 
     user_query = str(state.get("user_query", "")).strip()
-    if not user_query:
-        response = "I'm here to help with placements. You can ask about resumes, companies, interviews, coding, or study plans."
-    else:
+    history = state.get("history", [])
+    normalized = user_query.lower()
+
+    if not user_query or _GREETINGS_PATTERN.match(normalized) or len(normalized) <= 3 and normalized.startswith("h"):
         response = (
-            "I can help with placements, but I need a bit more context. "
-            "Try asking about resumes, company research, interview prep, coding review, or a roadmap."
+            "👋 **Hello! Welcome to CareerPilot AI.**\n\n"
+            "I am your autonomous placement coach. I can help you with:\n\n"
+            "- 📄 **Resume Analyzer**: ATS compatibility score, skill gaps & rewrites\n"
+            "- 🏢 **Company Research**: Live hiring intel, OA patterns & interview rounds\n"
+            "- 💻 **Coding Assistant**: Bug reviews, time/space complexity & optimizations\n"
+            "- 🎤 **Mock Interview**: HR & Technical interview practice with scoring\n"
+            "- 🗺️ **Roadmap Generator**: Personalized weekly placement study plans\n"
+            "- 📚 **RAG Knowledge Base**: Ask questions grounded in your uploaded documents\n\n"
+            "How would you like to start your placement preparation today?"
         )
+    else:
+        system_prompt = (
+            "You are CareerPilot's friendly placement assistant. "
+            "Respond conversationally to the user's message. Answer any general career or placement questions "
+            "briefly and suggest relevant placement workflows (resume review, company research, coding practice, mock interviews, or study roadmaps)."
+        )
+        try:
+            response = generate_response(system_prompt=system_prompt, user_query=user_query, history=history)
+        except Exception:
+            response = (
+                "👋 I'm here to help with your placement preparation! "
+                "You can ask me about resume analysis, company research, mock interviews, coding reviews, or personalized roadmaps."
+            )
+
     return {
         "route": "fallback",
         "response": response,
