@@ -16,10 +16,16 @@ venv/
 .ruff_cache/
 
 # Local app data
-careerpilot/backend/database/*.sqlite3
-careerpilot/backend/database/*.db
+careerpilot/backend/database/*.sqlite3*
+careerpilot/backend/database/*.db*
 careerpilot/backend/database/chroma/
-careerpilot/backend/memory/*.sqlite3
+careerpilot/backend/database/uploads/
+careerpilot/backend/memory/*.sqlite3*
+inspect_main.py
+patch_main.py
+temp_patch.py
+tmp_check_resume.py
+verify_main.py
 
 # Streamlit
 .streamlit/

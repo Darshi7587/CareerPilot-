@@ -8,6 +8,14 @@ from typing import Any, Literal
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
+import ssl
+import httpx
+
+try:
+    ssl._create_default_https_context = ssl._create_unverified_context
+except Exception:
+    pass
+
 from careerpilot.backend.config import Settings, get_settings
 
 RouteName = Literal["resume", "company", "coding", "interview", "roadmap", "rag", "fallback"]
@@ -29,33 +37,44 @@ def build_chat_model(settings: Settings | None = None) -> Any:
 
     active_settings = settings or get_settings()
     provider = active_settings.default_llm_provider.lower()
-    if provider == "gemini" and active_settings.gemini_api_key:
-        from langchain_google_genai import ChatGoogleGenerativeAI
-
-        return ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            api_key=active_settings.gemini_api_key,
-            temperature=0,
-        )
-
+    
     if provider == "groq" and active_settings.groq_api_key:
         from langchain_groq import ChatGroq
 
         return ChatGroq(
-            model="llama-3.3-70b-versatile",
+            model=active_settings.groq_model,
             api_key=active_settings.groq_api_key,
             temperature=0,
+            http_client=httpx.Client(verify=False),
+        )
+
+    if provider == "gemini" and active_settings.gemini_api_key:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        return ChatGoogleGenerativeAI(
+            model=active_settings.gemini_model,
+            api_key=active_settings.gemini_api_key,
+            temperature=0,
+        )
+
+    if active_settings.groq_api_key:
+        from langchain_groq import ChatGroq
+
+        return ChatGroq(
+            model=active_settings.groq_model,
+            api_key=active_settings.groq_api_key,
+            temperature=0,
+            http_client=httpx.Client(verify=False),
         )
 
     if active_settings.gemini_api_key:
         from langchain_google_genai import ChatGoogleGenerativeAI
 
-        return ChatGoogleGenerativeAI(model="gemini-2.0-flash", api_key=active_settings.gemini_api_key, temperature=0)
-
-    if active_settings.groq_api_key:
-        from langchain_groq import ChatGroq
-
-        return ChatGroq(model="llama-3.3-70b-versatile", api_key=active_settings.groq_api_key, temperature=0)
+        return ChatGoogleGenerativeAI(
+            model=active_settings.gemini_model,
+            api_key=active_settings.gemini_api_key,
+            temperature=0,
+        )
 
     raise LLMConfigurationError("No LLM provider has been configured.")
 

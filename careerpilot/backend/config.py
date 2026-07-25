@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     default_llm_provider: str = Field(default="gemini", alias="DEFAULT_LLM_PROVIDER")
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
     groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
+    gemini_model: str = Field(default="gemini-2.0-flash", alias="GEMINI_MODEL")
+    groq_model: str = Field(default="llama-3.3-70b-versatile", alias="GROQ_MODEL")
     sqlite_path: Path = Field(
         default=Path("careerpilot/backend/database/careerpilot.sqlite3"),
         alias="CAREERPILOT_SQLITE_PATH",

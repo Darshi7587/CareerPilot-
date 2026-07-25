@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from careerpilot.backend.agents.common import AgentState, run_specialist
+from careerpilot.backend.llm import LLMConfigurationError, generate_response
 from careerpilot.backend.rag.service import get_rag_service
 
 _RESUME_PROMPT = """You are CareerPilot's expert resume analyst and ATS (Applicant Tracking System) specialist.
@@ -46,15 +47,27 @@ Be specific and reference actual content from the resume. Do not invent facts no
 Format your response in clean markdown with headers and bullet points."""
 
 
+def _generate_resume_response(system_prompt: str, user_query: str, history: list[dict[str, Any]]) -> str:
+    """Helper hook for generating resume specialist responses."""
+    try:
+        return generate_response(system_prompt=system_prompt, user_query=user_query, history=history)
+    except LLMConfigurationError as exc:
+        return f"The selected LLM provider is not configured: {exc}"
+    except Exception:
+        return "I could not complete that request because the AI provider is temporarily unavailable. Please try again."
+
+
 def handle_resume(state: AgentState) -> AgentState:
     """Provide comprehensive resume and ATS feedback grounded in uploaded PDFs when available."""
 
     query = state.get("user_query", "")
     session_id = state.get("session_id", "default-session")
-    enriched_state: AgentState = dict(state)
+    history = state.get("history", [])
 
     service = get_rag_service()
     indexed = [record for record in service.registry.list(session_id) if record.status == "indexed"]
+    prompt = _RESUME_PROMPT
+
     if indexed:
         try:
             matches = service.retrieve(session_id, query or "resume skills experience projects education")
@@ -63,12 +76,11 @@ def handle_resume(state: AgentState) -> AgentState:
                     f"[{item['metadata']['filename']} p.{item['metadata']['page']}]\n{item['content']}"
                     for item in matches
                 )
-                enriched_state["user_query"] = f"{query}\n\nUploaded resume content:\n{context}"
+                prompt = f"{_RESUME_PROMPT}\n\nUploaded resume content:\n{context}"
         except Exception:
             pass
 
-    result = run_specialist(enriched_state, _RESUME_PROMPT)
-    metadata = dict(result.get("metadata") or {})
+    response = _generate_resume_response(prompt, query, history)
+    metadata = dict(state.get("metadata") or {})
     metadata["resume_documents"] = len(indexed)
-    result["metadata"] = metadata
-    return result
+    return {"response": response, "metadata": metadata}

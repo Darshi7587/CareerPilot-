@@ -152,13 +152,19 @@ def _plan_route(state: PlannerState, classifier: RouteClassifier | None) -> tupl
 
     if classifier is not None:
         return classifier(query), {"classification_source": "injected_classifier"}
+
+    # Fast heuristic check to avoid extra LLM latency roundtrips when query is clear
+    rule_route = classify_query(query)
+    if rule_route != "fallback":
+        return rule_route, {"classification_source": "heuristic_rules"}
+
     try:
         decision: RouteDecision = classify_with_llm(query, state.get("history", []))
         return decision.route, {"classification_source": "llm", "classification_reason": decision.rationale}
     except LLMConfigurationError as exc:
-        return classify_query(query), {"classification_source": "keyword_fallback", "llm_error": str(exc)}
+        return rule_route, {"classification_source": "keyword_fallback", "llm_error": str(exc)}
     except Exception:
-        return classify_query(query), {"classification_source": "keyword_fallback", "llm_error": "Planner provider unavailable."}
+        return rule_route, {"classification_source": "keyword_fallback", "llm_error": "Planner provider unavailable."}
 
 
 def _fallback_handler(state: PlannerState) -> PlannerState:

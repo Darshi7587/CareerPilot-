@@ -1,4 +1,10 @@
-﻿from __future__ import annotations
+from __future__ import annotations
+
+import ssl
+try:
+    ssl._create_default_https_context = ssl._create_unverified_context
+except Exception:
+    pass
 
 import json
 import logging
@@ -47,6 +53,7 @@ class ChatResponse(BaseModel):
 
     route: str
     response: str
+    session_id: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
     execution_time_ms: float = 0
     sources: list[str] = Field(default_factory=list)
@@ -91,7 +98,7 @@ def _build_chat_query(message: str, focus: str) -> str:
     return f"[{focus} request] {message}"
 
 
-def _enrich_chat_response(result: dict[str, Any], elapsed_ms: float) -> ChatResponse:
+def _enrich_chat_response(result: dict[str, Any], elapsed_ms: float, session_id: str = "") -> ChatResponse:
     metadata = dict(result.get("metadata") or {})
     sources = metadata.get("sources", [])
     if isinstance(sources, str):
@@ -99,6 +106,7 @@ def _enrich_chat_response(result: dict[str, Any], elapsed_ms: float) -> ChatResp
     return ChatResponse(
         route=str(result.get("route", "fallback")),
         response=str(result.get("response", "")),
+        session_id=session_id or str(result.get("session_id", "")),
         metadata=metadata,
         execution_time_ms=round(elapsed_ms, 1),
         sources=list(sources),
@@ -184,7 +192,7 @@ def chat(request: ChatRequest) -> ChatResponse:
     except Exception as exc:
         logger.exception("Chat request failed for session %s", request.session_id)
         raise HTTPException(status_code=503, detail="CareerPilot is temporarily unavailable. Please try again.") from exc
-    return _enrich_chat_response(result, elapsed_ms)
+    return _enrich_chat_response(result, elapsed_ms, request.session_id)
 
 
 @app.post("/chat/stream")

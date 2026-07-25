@@ -13,9 +13,12 @@ import streamlit as st
 DEFAULT_BACKEND = os.getenv("CAREERPILOT_BACKEND_URL", "http://127.0.0.1:8000")
 
 
-@st.cache_resource
 def get_http_client() -> httpx.Client:
-    return httpx.Client(timeout=120.0)
+    client = st.session_state.get("_httpx_client")
+    if client is None or getattr(client, "is_closed", True):
+        client = httpx.Client(timeout=120.0)
+        st.session_state._httpx_client = client
+    return client
 
 
 def backend_url() -> str:

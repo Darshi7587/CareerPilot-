@@ -2,12 +2,26 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Ensure repository root is in sys.path for Streamlit
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 import re
 import uuid
 from datetime import datetime
 from typing import Any
 
-import plotly.graph_objects as go
+try:
+    import plotly.graph_objects as go
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
+    go = None
+
 import streamlit as st
 
 from careerpilot.frontend.api_client import (
@@ -176,16 +190,34 @@ def append_chat(message: str, focus: str, *, target: str = "messages") -> dict[s
             "ts": datetime.now().strftime("%I:%M %p"),
         }
     )
-    st.session_state.last_route = result.get("route", "fallback")
-    st.toast(f"Routed → {result.get('route', 'fallback')}", icon="🧭")
+    route_name = result.get("route", result.get("agent", "fallback"))
+    response_text = result.get("response", "")
+    if route_name == "resume" or focus == "resume":
+        st.session_state.resume_analysis = response_text
+    elif route_name == "company" or focus == "company":
+        st.session_state.company_result = response_text
+    elif route_name == "coding" or focus == "coding":
+        st.session_state.coding_result = response_text
+    elif route_name == "roadmap" or focus == "roadmap":
+        st.session_state.roadmap_result = response_text
+
+    st.session_state.last_route = route_name
+    st.toast(f"Routed → {route_name}", icon="🧭")
     return result
 
 
 def extract_ats_score(text: str) -> int | None:
-    match = re.search(r"ats[^0-9]{0,20}(\d{1,3})", text, re.IGNORECASE)
-    if match:
-        value = int(match.group(1))
-        return value if 0 <= value <= 100 else None
+    patterns = [
+        r"ats[^0-9]{0,30}(\d{1,3})\s*(?:/100|%)?",
+        r"score[^0-9]{0,20}(\d{1,3})\s*/\s*100",
+        r"(\d{1,3})\s*/\s*100",
+    ]
+    for pat in patterns:
+        match = re.search(pat, text, re.IGNORECASE)
+        if match:
+            val = int(match.group(1))
+            if 0 <= val <= 100:
+                return val
     return None
 
 
@@ -332,7 +364,7 @@ def page_resume() -> None:
 
         st.markdown(text)
 
-        if ats is not None:
+        if ats is not None and HAS_PLOTLY:
             fig = go.Figure(
                 go.Indicator(
                     mode="gauge+number",
@@ -548,25 +580,38 @@ def page_analytics() -> None:
 
     route_counts = data.get("route_counts") or {}
     if route_counts:
-        fig = go.Figure(go.Bar(x=list(route_counts.keys()), y=list(route_counts.values()), marker_color="#38bdf8"))
-        fig.update_layout(title="Agent Usage", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#e2e8f0", height=320)
-        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("**Agent Usage**")
+        if HAS_PLOTLY:
+            fig = go.Figure(go.Bar(x=list(route_counts.keys()), y=list(route_counts.values()), marker_color="#38bdf8"))
+            fig.update_layout(title="Agent Usage", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#e2e8f0", height=320)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.bar_chart(route_counts)
 
     radar = data.get("skill_radar") or {}
     if any(radar.values()):
-        fig = go.Figure(go.Scatterpolar(
-            r=list(radar.values()) + [list(radar.values())[0]],
-            theta=list(radar.keys()) + [list(radar.keys())[0]],
-            fill="toself", line_color="#a855f7", fillcolor="rgba(168,85,247,0.25)",
-        ))
-        fig.update_layout(title="Skill Radar", polar=dict(radialaxis=dict(visible=True)), paper_bgcolor="rgba(0,0,0,0)", font_color="#e2e8f0", height=380)
-        st.plotly_chart(fig, use_container_width=True)
+        if HAS_PLOTLY:
+            fig = go.Figure(go.Scatterpolar(
+                r=list(radar.values()) + [list(radar.values())[0]],
+                theta=list(radar.keys()) + [list(radar.keys())[0]],
+                fill="toself", line_color="#a855f7", fillcolor="rgba(168,85,247,0.25)",
+            ))
+            fig.update_layout(title="Skill Radar", polar=dict(radialaxis=dict(visible=True)), paper_bgcolor="rgba(0,0,0,0)", font_color="#e2e8f0", height=380)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.markdown("**Skill Radar**")
+            for skill, val in radar.items():
+                st.write(f"- **{skill}**: {val}")
 
     scores = data.get("interview_scores") or []
     if scores:
-        fig = go.Figure(go.Scatter(y=scores, mode="lines+markers", line=dict(color="#34d399")))
-        fig.update_layout(title="Interview Scores", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#e2e8f0", height=280)
-        st.plotly_chart(fig, use_container_width=True)
+        if HAS_PLOTLY:
+            fig = go.Figure(go.Scatter(y=scores, mode="lines+markers", line=dict(color="#34d399")))
+            fig.update_layout(title="Interview Scores", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#e2e8f0", height=280)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.markdown("**Interview Scores**")
+            st.line_chart(scores)
 
 
 def page_settings() -> None:
