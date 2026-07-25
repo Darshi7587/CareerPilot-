@@ -11,7 +11,7 @@ from careerpilot.backend.agents.interview import handle_interview
 from careerpilot.backend.agents.resume import handle_resume
 from careerpilot.backend.agents.roadmap import handle_roadmap
 from careerpilot.backend.agents.rag import handle_rag
-from careerpilot.backend.llm import LLMConfigurationError, RouteDecision, classify_with_llm
+from careerpilot.backend.llm import LLMConfigurationError, RouteDecision, classify_with_llm, generate_response
 
 RouteName = Literal["resume", "company", "coding", "interview", "roadmap", "rag", "fallback"]
 
@@ -191,16 +191,17 @@ def _fallback_handler(state: PlannerState) -> PlannerState:
         )
     else:
         system_prompt = (
-            "You are CareerPilot's friendly placement assistant. "
-            "Respond conversationally to the user's message. Answer any general career or placement questions "
-            "briefly and suggest relevant placement workflows (resume review, company research, coding practice, mock interviews, or study roadmaps)."
+            "You are CareerPilot AI, an intelligent, highly capable AI assistant built like ChatGPT. "
+            "Answer any question the user asks accurately, thoroughly, and naturally, whether it is about general knowledge, "
+            "science, technology, coding, placement advice, career guidance, creative writing, or any other topic. "
+            "Be helpful, engaging, clear, and articulate."
         )
         try:
             response = generate_response(system_prompt=system_prompt, user_query=user_query, history=history)
         except Exception:
             response = (
-                "👋 I'm here to help with your placement preparation! "
-                "You can ask me about resume analysis, company research, mock interviews, coding reviews, or personalized roadmaps."
+                "👋 I'm here to help you with any questions or placement preparation! "
+                "Feel free to ask me anything about technical topics, general knowledge, resume analysis, company research, coding, or interview prep."
             )
 
     return {
